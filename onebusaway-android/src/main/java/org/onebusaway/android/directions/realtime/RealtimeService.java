@@ -18,7 +18,22 @@ package org.onebusaway.android.directions.realtime;
 
 import org.opentripplanner.api.model.Itinerary;
 
+import java.util.List;
+
 public interface RealtimeService {
+
+    enum Reason { EARLY, LATE, NOT_PRESENT }
+
+    interface Callback {
+        /**
+         * Notify calling class that trip plan is no longer valid
+         *
+         * @param reason - reason why plan is invalid: early, late, did not appear in new request.
+         * @param newPlan - list of itineraries from most recent request to OTP for this plan
+         * @param id - unique ID for the trip plan that has become invalid. Helpful for sending notifications.
+         */
+        void onTripPlanInvalidated(Reason reason, List<Itinerary> newPlan, int id);
+    }
 
     void onItinerarySelected(Itinerary itinerary);
 

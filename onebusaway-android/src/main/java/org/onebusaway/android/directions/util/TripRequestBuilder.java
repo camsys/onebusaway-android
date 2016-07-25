@@ -38,7 +38,6 @@ import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
-import java.util.Locale;
 
 public class TripRequestBuilder {
 
@@ -53,6 +52,7 @@ public class TripRequestBuilder {
     private static final String MAX_WALK_DISTANCE = ".MAX_WALK_DISTANCE";
     private static final String MODE_SET = ".MODE_SET";
     private static final String DATE_TIME = ".DATE_TIME";
+    private static final String NUM_ITINERARIES = ".NUM_ITINERARIES";
 
     private TripRequest.Callback mListener;
 
@@ -136,6 +136,14 @@ public class TripRequestBuilder {
         return d != 0 ? d : null;
     }
 
+    public TripRequestBuilder setNumItineraries(int i) {
+        mBundle.putInt(NUM_ITINERARIES, i);
+        return this;
+    }
+
+    public int getNumItineraries() {
+        return mBundle.getInt(NUM_ITINERARIES, -1);
+    }
 
     // Built in TraverseModeSet does not work properly so we cannot use request.setMode
     // This is built from examining dropdown on the OTP webapp
@@ -245,6 +253,11 @@ public class TripRequestBuilder {
             request.getParameters().put("mode", modeString);
         }
 
+        int numItineraries = getNumItineraries();
+        if (numItineraries > 0) {
+            request.setNumItineraries(numItineraries);
+        }
+
         // Our default. This could be configurable.
         request.setShowIntermediateStops(true);
 
@@ -331,6 +344,7 @@ public class TripRequestBuilder {
         if (getDateTime() != null) {
             target.putLong(DATE_TIME, getDateTime().getTime());
         }
+        target.putInt(NUM_ITINERARIES, getNumItineraries());
     }
 
     /**

@@ -16,29 +16,22 @@
  */
 package org.onebusaway.android.directions.realtime;
 
-import org.onebusaway.android.R;
 import org.onebusaway.android.directions.model.ItineraryDescription;
 import org.onebusaway.android.directions.tasks.TripRequest;
 import org.onebusaway.android.directions.util.OTPConstants;
 import org.onebusaway.android.directions.util.TripRequestBuilder;
-import org.onebusaway.android.ui.TripPlanActivity;
 import org.opentripplanner.api.model.Itinerary;
 import org.opentripplanner.api.model.Leg;
 
-import android.app.Activity;
 import android.app.AlarmManager;
-import android.app.Notification;
-import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
-import android.content.res.Resources;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
-import android.support.v4.app.NotificationCompat;
 import android.util.Log;
 
 import java.util.Date;
@@ -53,7 +46,7 @@ public class RealtimeServiceImpl implements RealtimeService {
 
     private AlarmManager mAlarmMgr;
 
-    private Activity mActivity;
+    private RealtimeService.Callback mCallback;
 
     private IntentFilter mIntentFilter;
 
@@ -69,9 +62,9 @@ public class RealtimeServiceImpl implements RealtimeService {
 
     private static final long DELAY_THRESHOLD_SEC = 120;
 
-    public RealtimeServiceImpl(Context context, Activity mActivity, Bundle bundle) {
-        this.mActivity = mActivity;
-        this.mApplicationContext = context;
+    public RealtimeServiceImpl(Context context, RealtimeService.Callback callback, Bundle bundle) {
+        mCallback = callback;
+        mApplicationContext = context;
         mAlarmMgr = (AlarmManager) mApplicationContext.getSystemService(Context.ALARM_SERVICE);
 
         mIntentFilter = new IntentFilter(OTPConstants.INTENT_UPDATE_TRIP_TIME_ACTION);
@@ -80,7 +73,7 @@ public class RealtimeServiceImpl implements RealtimeService {
         mTripUpdateIntent = new Intent(OTPConstants.INTENT_UPDATE_TRIP_TIME_ACTION);
         mAlarmIntentTripUpdate = PendingIntent.getBroadcast(mApplicationContext, 0, mTripUpdateIntent, 0);
 
-        this.mBundle = bundle;
+        mBundle = bundle;
 
         mRegistered = false;
     }
@@ -141,8 +134,7 @@ public class RealtimeServiceImpl implements RealtimeService {
 
                         if (Math.abs(delay) > DELAY_THRESHOLD_SEC) {
                             Log.d(TAG, "Notify due to large delay.");
-                            showNotification(mItineraryDescription, 
-                                    (delay > 0) ? R.string.trip_plan_delay : R.string.trip_plan_early);
+                            mCallback.onTripPlanInvalidated((delay > 0 ? Reason.LATE : Reason.EARLY), itineraries, mItineraryDescription.getId());
                             disableListenForTripUpdates();
                             return;
                         }
@@ -157,7 +149,7 @@ public class RealtimeServiceImpl implements RealtimeService {
                 }
 
                 Log.d(TAG, "Did not find a matching itinerary in new call.");
-                showNotification(mItineraryDescription, R.string.trip_plan_not_recommended);
+                mCallback.onTripPlanInvalidated(Reason.NOT_PRESENT, itineraries, mItineraryDescription.getId());
                 disableListenForTripUpdates();
 
             }
@@ -171,7 +163,9 @@ public class RealtimeServiceImpl implements RealtimeService {
         };
 
         // Create trip request from the original. Do not update the departure time.
+        // Set numItineraries to a large number so it's less likely we won't get same itinerary back.
         TripRequestBuilder builder = new TripRequestBuilder(mBundle)
+                .setNumItineraries(10)
                 .setListener(callback);
 
         try {
@@ -197,58 +191,13 @@ public class RealtimeServiceImpl implements RealtimeService {
         mRegistered = false;
     }
 
-    private void showNotification(ItineraryDescription description, int message) {
-
-        String itineraryChange = getResources().getString(message);
-
-        Intent notificationIntentOpenApp = new Intent(mApplicationContext, mActivity.getClass());
-        notificationIntentOpenApp.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        PendingIntent notificationOpenAppPendingIntent = PendingIntent
-                .getActivity(mApplicationContext,
-                        0,
-                        notificationIntentOpenApp,
-                        0);
-
-        NotificationCompat.Builder mBuilder =
-                new NotificationCompat.Builder(mApplicationContext)
-                        .setSmallIcon(R.drawable.ic_stat_notification)
-                        .setContentTitle(getResources().getString(R.string.title_activity_trip_plan))
-                        .setStyle(new NotificationCompat.BigTextStyle().bigText(itineraryChange))
-                        .setContentText(itineraryChange)
-                        .setPriority(NotificationCompat.PRIORITY_MAX)
-                        .setContentIntent(notificationOpenAppPendingIntent);
-
-        NotificationManager notificationManager =
-                (NotificationManager) mApplicationContext.getSystemService(Context.NOTIFICATION_SERVICE);
-        Notification notification = mBuilder.build();
-        notification.defaults = Notification.DEFAULT_ALL;
-        notification.flags |= Notification.FLAG_AUTO_CANCEL | Notification.FLAG_SHOW_LIGHTS;
-
-        Integer notificationId = description.getId();
-        notificationManager.notify(notificationId, notification);
-    }
-
-    private Resources getResources() {
-        return mApplicationContext.getResources();
-    }
-
-
     BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             if (intent.getAction().equals(OTPConstants.INTENT_UPDATE_TRIP_TIME_ACTION)) {
                 checkForItineraryChange();
 
-            } else if (intent.getAction().equals(OTPConstants.INTENT_NOTIFICATION_ACTION_OPEN_APP)) {
-
-                // OTP-for-Android opens a new activity with trip ID data. We just open the old activity.
-                Intent activityIntent = new Intent(mApplicationContext, TripPlanActivity.class);
-                activityIntent.setAction(Intent.ACTION_MAIN);
-                activityIntent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                mApplicationContext.startActivity(activityIntent);
-
             }
-
         }
     };
 }

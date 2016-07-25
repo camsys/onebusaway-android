@@ -1006,9 +1006,9 @@
     <string name="map_markers_warning_live_updates_early_arrival">early</string>
     <string name="map_markers_warning_live_updates_late_arrival">delay</string>
 
-    <string name="trip_plan_not_recommended">Your trip is no longer recommended for this route.</string>
-    <string name="trip_plan_delay">Your trip is delayed.</string>
-    <string name="trip_plan_early">Your trip is early.</string>
+    <string name="trip_plan_not_recommended">Your trip is no longer recommended for this route. Tap to see a new plan.</string>
+    <string name="trip_plan_delay">Your trip is delayed. Tap to see a new plan.</string>
+    <string name="trip_plan_early">Your trip is early. Tap to see a new plan.</string>
 
     <!-- Trip plan advanced settings -->
     <string name="trip_plan_advanced_settings">Additional Trip Preferences</string>

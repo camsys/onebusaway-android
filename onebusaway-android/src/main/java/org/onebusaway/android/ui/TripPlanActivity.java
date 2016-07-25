@@ -20,6 +20,7 @@ import com.sothree.slidinguppanel.SlidingUpPanelLayout;
 
 import org.onebusaway.android.R;
 import org.onebusaway.android.app.Application;
+import org.onebusaway.android.directions.realtime.RealtimeService;
 import org.onebusaway.android.directions.tasks.TripRequest;
 import org.onebusaway.android.directions.util.OTPConstants;
 import org.onebusaway.android.directions.util.TripRequestBuilder;
@@ -30,12 +31,18 @@ import org.opentripplanner.api.model.Itinerary;
 import org.opentripplanner.api.ws.Message;
 
 import android.app.AlertDialog;
+import android.app.Notification;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.ProgressDialog;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.location.Location;
 import android.os.Bundle;
 import android.support.v4.app.Fragment;
+import android.support.v4.app.NotificationCompat;
+import android.support.v4.app.TaskStackBuilder;
 import android.support.v7.app.AppCompatActivity;
 import android.text.TextUtils;
 import android.view.MenuItem;
@@ -50,7 +57,7 @@ import java.util.List;
 
 
 public class TripPlanActivity extends AppCompatActivity implements TripRequest.Callback,
-        TripResultsFragment.Listener, TripPlanFragment.Listener {
+        TripResultsFragment.Listener, TripPlanFragment.Listener, RealtimeService.Callback {
 
     private static final String TAG = "TripPlanActivity";
 
@@ -74,6 +81,8 @@ public class TripPlanActivity extends AppCompatActivity implements TripRequest.C
 
     // flag to indicate intent sent by this class
     private static final String INTENT_SOURCE = "org.onebusaway.android.INTENT_SOURCE";
+    private static final String INTENT_SOURCE_ACTIVITY = "activity";
+    private static final String INTENT_SOURCE_NOTIFICATION = "notification";
 
     TripResultsFragment mResultsFragment;
 
@@ -103,7 +112,7 @@ public class TripPlanActivity extends AppCompatActivity implements TripRequest.C
         // see if there is data from intent
         Intent intent = getIntent();
         if (intent != null && intent.getExtras() != null
-                && intent.getBooleanExtra(INTENT_SOURCE, false)) {
+                && intent.getStringExtra(INTENT_SOURCE) != null) {
 
             ArrayList<Itinerary> itineraries = (ArrayList<Itinerary>) intent.getExtras().getSerializable(OTPConstants.ITINERARIES);
 
@@ -116,6 +125,12 @@ public class TripPlanActivity extends AppCompatActivity implements TripRequest.C
                 bundle.putSerializable(SHOW_ERROR_DIALOG, true);
                 bundle.putInt(PLAN_ERROR_CODE, intent.getIntExtra(PLAN_ERROR_CODE, 0));
                 bundle.putString(PLAN_ERROR_URL, intent.getStringExtra(PLAN_ERROR_URL));
+            }
+
+            // If intent sent from notification, we have other fields
+            if (intent.getStringExtra(INTENT_SOURCE).equals(INTENT_SOURCE_NOTIFICATION)) {
+                TripRequestBuilder src = new TripRequestBuilder(intent.getExtras());
+                src.copyIntoBundle(bundle);
             }
 
             setIntent(null);
@@ -275,6 +290,7 @@ public class TripPlanActivity extends AppCompatActivity implements TripRequest.C
 
         mResultsFragment = new TripResultsFragment();
         mResultsFragment.setListener(this);
+        mResultsFragment.setRealtimeCallback(this);
         mResultsFragment.setArguments(mBuilder.getBundle());
         getSupportFragmentManager().beginTransaction()
                 .add(R.id.trip_results_fragment_container, mResultsFragment).commit();
@@ -291,7 +307,7 @@ public class TripPlanActivity extends AppCompatActivity implements TripRequest.C
                 .setAction(Intent.ACTION_MAIN)
                 .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 .putExtra(OTPConstants.ITINERARIES, (ArrayList<Itinerary>) itineraries)
-                .putExtra(INTENT_SOURCE, true);
+                .putExtra(INTENT_SOURCE, INTENT_SOURCE_ACTIVITY);
 
         startActivity(intent);
     }
@@ -304,9 +320,59 @@ public class TripPlanActivity extends AppCompatActivity implements TripRequest.C
                 .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 .putExtra(PLAN_ERROR_CODE, errorCode)
                 .putExtra(PLAN_ERROR_URL, url)
-                .putExtra(INTENT_SOURCE, true);
+                .putExtra(INTENT_SOURCE, INTENT_SOURCE_ACTIVITY);
 
         startActivity(intent);
+    }
+
+    @Override
+    public void onTripPlanInvalidated(RealtimeService.Reason reason, List<Itinerary> newPlan, int id) {
+
+        // Send notification to this activity - start with new plan.
+
+        String message = null;
+
+        switch(reason) {
+            case EARLY:
+                message = getString(R.string.trip_plan_early);
+                break;
+            case LATE:
+                message = getString(R.string.trip_plan_delay);
+                break;
+            case NOT_PRESENT:
+                message = getString(R.string.trip_plan_not_recommended);
+                break;
+        }
+
+        Bundle bundle = mBuilder.getBundle();
+        bundle.putSerializable(OTPConstants.ITINERARIES, (ArrayList<Itinerary>) newPlan);
+        bundle.putString(INTENT_SOURCE, INTENT_SOURCE_NOTIFICATION);
+
+        Intent intent = new Intent(this, TripPlanActivity.class)
+                .setAction(Intent.ACTION_MAIN)
+                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .putExtras(bundle);
+
+        PendingIntent pendingIntent = PendingIntent.getActivity(getApplicationContext(), 0,
+                intent, PendingIntent.FLAG_UPDATE_CURRENT);
+
+        NotificationCompat.Builder mBuilder =
+                new NotificationCompat.Builder(this)
+                        .setSmallIcon(R.drawable.ic_stat_notification)
+                        .setContentTitle(getResources().getString(R.string.title_activity_trip_plan))
+                        .setStyle(new NotificationCompat.BigTextStyle().bigText(message))
+                        .setContentText(message)
+                        .setPriority(NotificationCompat.PRIORITY_MAX)
+                        .setContentIntent(pendingIntent);
+
+        NotificationManager notificationManager =
+                (NotificationManager) getApplicationContext().getSystemService(Context.NOTIFICATION_SERVICE);
+        Notification notification = mBuilder.build();
+        notification.defaults = Notification.DEFAULT_ALL;
+        notification.flags |= Notification.FLAG_AUTO_CANCEL | Notification.FLAG_SHOW_LIGHTS;
+
+        notificationManager.notify(id, notification);
+
     }
 
     private void showFeedbackDialog(int errorCode, final String url) {

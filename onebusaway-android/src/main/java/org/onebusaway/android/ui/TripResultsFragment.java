@@ -29,7 +29,6 @@ import org.onebusaway.android.map.googlemapsv2.BaseMapFragment;
 import org.opentripplanner.api.model.Itinerary;
 
 import android.content.Intent;
-import android.graphics.ColorFilter;
 import android.graphics.PorterDuff;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
@@ -71,6 +70,8 @@ public class TripResultsFragment extends Fragment {
 
     private Bundle mMapBundle = new Bundle();
 
+    private RealtimeService.Callback mRealtimeCallback;
+
     // This listener is a helper for the parent activity to handle the sliding panel,
     // which interacts with sliding views (ie list view and map view) in subtle ways.
 
@@ -101,7 +102,9 @@ public class TripResultsFragment extends Fragment {
         mOptions[1] = new RoutingOptionPicker(view, R.id.option2LinearLayout, R.id.option2Title, R.id.option2Duration, R.id.option2Interval);
         mOptions[2] = new RoutingOptionPicker(view, R.id.option3LinearLayout, R.id.option3Title, R.id.option3Duration, R.id.option3Interval);
 
-        mRealtimeService = new RealtimeServiceImpl(getActivity().getApplicationContext(), getActivity(), getArguments());
+        if (mRealtimeCallback != null) {
+            mRealtimeService = new RealtimeServiceImpl(getActivity().getApplicationContext(), mRealtimeCallback, getArguments());
+        }
 
         int rank = getArguments().getInt(OTPConstants.SELECTED_ITINERARY); // defaults to 0
         mShowingMap = getArguments().getBoolean(OTPConstants.SHOW_MAP);
@@ -144,7 +147,9 @@ public class TripResultsFragment extends Fragment {
     @Override
     public void onDestroy() {
         super.onDestroy();
-        mRealtimeService.disableListenForTripUpdates();
+        if (mRealtimeService != null) {
+            mRealtimeService.disableListenForTripUpdates();
+        }
     }
 
     @Override
@@ -169,6 +174,15 @@ public class TripResultsFragment extends Fragment {
      */
     public void setListener(Listener listener) {
         mListener = listener;
+    }
+
+    /**
+     * Set callback for realtime service (probably the calling activity)
+     *
+     * @param callback the new callback
+     */
+    public void setRealtimeCallback(RealtimeService.Callback callback) {
+        mRealtimeCallback = callback;
     }
 
     /**
@@ -330,7 +344,9 @@ public class TripResultsFragment extends Fragment {
 
             if(Application.getPrefs()
                     .getBoolean(getString(R.string.preference_key_trip_plan_notifications), true)) {
-                mRealtimeService.onItinerarySelected(itinerary);
+                if (mRealtimeService != null) {
+                    mRealtimeService.onItinerarySelected(itinerary);
+                }
             }
         }
 
